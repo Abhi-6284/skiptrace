@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.services.scraper import scrape_google_details
 from pydantic import BaseModel
+import uvicorn
 
 app = FastAPI()
 
@@ -31,3 +32,7 @@ async def scrape(request: ScrapeRequest):
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the Google Scraper API"}
+
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

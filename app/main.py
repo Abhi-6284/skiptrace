@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.services.scraper import scrape_google_details

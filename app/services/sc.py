@@ -3,47 +3,39 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 import time
 import random
 import json
 import re
-from datetime import datetime
+from concurrent.futures import ProcessPoolExecutor
+from fastapi import FastAPI, HTTPException
+import asyncio
+
+app = FastAPI()
 
 def extract_email_and_phone(text):
     email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     phone_pattern = r'(?:(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,3}\)?[-.\s]?)?\d{3}[-.\s]?\d{3,4}[-.\s]?\d{4}|\d{10})'
-
     emails = re.findall(email_pattern, text) if text else []
     phones = re.findall(phone_pattern, text) if text else []
-    
     return emails, phones
 
 def scrape_google_details(querysearch):
     """
     Scrape Google search results based on a custom query string.
-    
-    Args:
-        querysearch (str): The search query string.
-    
-    Returns:
-        dict: Contains knowledge panel, search results, emails, and phone numbers.
     """
-    # Append additional filters to the query
     query = f"{querysearch} email or phone or contact -short-term -monthly"
 
-    options = webdriver.ChromeOptions()
+    options = Options()
+    # Uncomment for headless mode if you don’t need to see the browser
     # options.add_argument("--headless")
-    # options.add_argument('--no-sandbox')
-    # options.add_argument('--disable-dev-shm-usage')
-    # options.add_argument('--disable-gpu')
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    
+
     driver = webdriver.Chrome(options=options)
 
     try:
@@ -55,7 +47,7 @@ def scrape_google_details(querysearch):
         )
         for char in query:
             search_box.send_keys(char)
-            time.sleep(0.4)
+            time.sleep(0.05)  # Slightly faster typing
         search_box.send_keys(Keys.RETURN)
 
         WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "search")))
@@ -65,7 +57,8 @@ def scrape_google_details(querysearch):
         all_emails = set()
         all_phones = set()
 
-        while True:
+        max_pages = 3
+        for page in range(max_pages):
             soup = BeautifulSoup(driver.page_source, 'html.parser')
 
             if not knowledge_panel_text:
@@ -98,13 +91,19 @@ def scrape_google_details(querysearch):
                         'phones': phones
                     })
 
+            # Try to find and click the "Next" button
             try:
-                next_button = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.ID, "pnnext"))
+                # Use a more robust XPath for the "Next" link
+                next_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//a[@id='pnnext'] | //a[contains(@aria-label, 'Next')]"))
                 )
+                driver.execute_script("arguments[0].scrollIntoView(true);", next_button)  # Scroll to ensure visibility
+                time.sleep(random.uniform(0.5, 1))  # Brief pause after scrolling
                 next_button.click()
-                time.sleep(random.uniform(2, 4))
-            except:
+                time.sleep(random.uniform(2, 4))  # Wait for page load
+                print(f"Navigated to page {page + 2}")
+            except Exception as e:
+                print(f"No more pages or error clicking Next: {str(e)}")
                 break
 
         result_data = {
@@ -118,7 +117,12 @@ def scrape_google_details(querysearch):
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
-        return None
+        return {"error": str(e)}
 
     finally:
         driver.quit()
+
+# Example usage
+if __name__ == "__main__":
+    result = scrape_google_detailss("example company contact")
+    print(json.dumps(result, indent=2))
